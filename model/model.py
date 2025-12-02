@@ -1,5 +1,6 @@
 import networkx as nx
 from database.dao import DAO
+from model.hub import Hub
 
 
 class Model:
@@ -16,37 +17,26 @@ class Model:
 
         self.G.clear() #svuoto il grafo
 
+        # inserisco i nodi
+        self.hubs = {}
+        for h in DAO().get_all_hubs():
+            hubs = Hub(h["id"], h["codice"], h["nome"], h["citta"], h["stato"],
+                       h["latitudine"], h["longitudine"])
+            self.hubs[h["id"]] = hubs
+            self.G.add_nodes_from(self.hubs)
+
         #ottengo tutte le tratte A-B
         tratte = DAO().get_tratte()
 
-        #inserisco i nodi
-        for t in tratte:
-            hub1 = (t.hub1.id, t.hub1.nome)
-            hub2 = (t.hub2.id, t.hub2.nome)
-
-            self.G.add_node(hub1[0], nome=hub1[1])
-            self.G.add_node(hub2[0], nome=hub2[1])
-
         #inserisco gli archi
         for t in tratte:
+            hub1 = self.hubs[t["hub1"]]
+            hub2 = self.hubs[t["hub2"]]
+
             guadagno_medio = t['valore_totale'] / t['num_spedizioni']
 
             if guadagno_medio >= threshold:
-                self.G.add_node(t['hub1_id'], nome=t['hub1_nome'], stato=t['hub1_stato'])
-                self.G.add_node(t['hub2_id'], nome=t['hub2_nome'], stato=t['hub2_stato'])
-
-                self.G.add_edge(
-                    t['hub1_id'], t['hub2_id'],
-                    weight=guadagno_medio,
-                    num_spedizioni=t['num_spedizioni'],
-                    valore_totale=t['valore_totale'],
-                    hub1_nome=t['hub1_nome'],
-                    hub1_stato=t['hub1_stato'],
-                    hub2_nome=t['hub2_nome'],
-                    hub2_stato=t['hub2_stato']
-                )
-
-        return self.G
+                self.G.add_edge(hub1, hub2, weight=guadagno_medio)
 
     def get_num_edges(self):
         """
@@ -69,5 +59,7 @@ class Model:
         Restituisce tutte le Tratte (gli edges) con i corrispondenti pesi
         :return: gli edges del grafo con gli attributi (il weight)
         """
-
-        return list(self.G.edges(data=True)) #restituisce tutte le tratte, con i dati inseriti in precedenza
+        result = []
+        for u,v,data in self.G.edges(data=True):
+            result.append((u, v, data['weight']))
+        return result #restituisce tutte le tratte, con il guadagno medio
